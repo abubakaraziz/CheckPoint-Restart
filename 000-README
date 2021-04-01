@@ -1,0 +1,407 @@
+                        Homework 5
+                       DUE:  April 5
+
+Copyright (c) Gene Cooperman, 2021
+This may be copied, modified, and re-distributed (and additional
+copyrights added) as long as this copyright notice remains.
+
+====
+MOTIVATION AND RATIONALE FOR THIS ASSIGNMENT:
+
+In this assignment, you will build a mini-ckpt program.
+The software that you produce will be self-contained.
+
+The rationale for this assignment is that it serves as a capstone
+that allows you to review _most_ of the topics covered in this course.
+This assignment represents a valuable _real-world_ program that you may
+wish to use in your future work.  In principle, this assignment requires
+almost _nothing_ that is new for you, although it requires applying the
+concepts in a new manner.  Hence, this serves as a useful _capstone_
+homework assignment.
+
+The only new system calls are 'mmap' and 'munmap' and 'sigsetjmp' and
+'siglongjmp'.  We will also use the techniques of LD_PRELOAD, constructor
+functions, and signal handlers.  Beyond that, /proc/self/maps (memory
+segments) is used.  Aside from that, we re re-using concepts from:
+assembly; memory layout (text/data/stack, call fames); the system calls of
+myshell (especially, signal (and signal handlers), kill, open, close,
+and the calls that were discussed but not used:  "read" and "write");
+standard Linux productivity tools (e.g., Makefile/make, GDB, and pointers
+(especially the operators: "*", "&", and the additional operator "sizeof",
+and data structures in C.
+
+====
+DESCRIPTION OF ASSIGNMENT:
+
+You will write a dynamically linked library, libckpt.so.  Dynamically
+linke libraries are create using:
+  gcc -shared -o libckpt.so ckpt.c
+
+The techniques used are mostly covered in the example programs that
+are provided here.  See the file BACKGROUND, included here,
+and the file Makefile (Do 'make all' to build all the examples.)
+The techniques will only support checkpointing single-threaded
+programs (not multi-threaded).
+
+(Note that the memory layout of a process is stored in /proc/PID/maps,
+ as described in the BACKGROUND file.
+ The fields such as rwxp can be read as "read", "write", "execute"
+ and "private".  Naturally, rwx refer to the permissions.
+ Private refers to private memory.  If you see "s" instead
+ of "p", then it is shared memory.)
+
+==================================================================
+The assignment has three parts:
+A. SAVING A CHECKPOINT IMAGE FILE
+B. READING THE CHECKPOINT IMAGE FILE AND PRINTING THE INFORMATION
+C. RESTARTING FROM A CHECKPOINT IMAGE FILE
+D. WHAT TO HAND IN
+
+==================================================================
+A. SAVING A CHECKPOINT IMAGE FILE:
+1.  You will preload your libckpt.so when the target executable is run.
+     For an example of this, see constructor1.c, used as part of test1,
+     as mentioned in BACKGROUND and in Makefile.  The rest of this
+     section describes how to build a C file, ckpt.c, that is compiled
+     to libckpt.so.
+2.  You will need a simple way to trigger the checkpoint.  In ckpt.c,
+     write a signal handler for SIGUSR2, that will initiate all
+     of the previous steps.
+     [ To trigger a checkpoint, you now just need to do from a command line:
+         kill -12 PID
+       where PID is the process id of the target process that you wish
+       to checkpoint.  (Signal 12 is SIGUSR2, reserved for end users.)]
+     For an example of this, see constructor4.c, used as part of test4,
+     as mentioned in BACKGROUND and in Makefile.
+3.  The signal handler will only help you if you can call 'signal()'
+     to register the signal handler.  The call to 'signal()' must
+     occur even before 'main()' is called in the user's executable.
+     It is not enough that ckpt.c is part of libckpt.so, which is
+     preloaded.  We also need to "pre-execute" the call to 'signal()'
+     To do this, we will define a constructor function inside ckpt.c
+     (inside libckpt.so).  If you have ever seen or written code that
+     initializes a _global_ variable, myObj:  Obj myObj = new Obj();
+     then you have seen a constructor in an object-oriented language
+     like C++ or Java.  In C, we create a constructor function using
+     the syntax shown in constructor1.c (invoked via: ./test1 EXECUTABLE).
+     See BACKGROUND, Makefile, and constructor1.c.
+4.  After a SIGUSR2 has signaled a request for a checkpoint, your
+     signal handler will need to call a function to read the current
+     memory segment from /proc/self/maps (which is the memory layout
+     of the current process.  For an example of this, see proc-self-maps.c,
+     mentioned in BACKGROUND and in Makefile.
+5.  Your signal handler will need to practice saving each memory segment
+     in a checkpoint image file.  For an example of this, see
+     save-restore-memory.c, mentioned in BACKGROUND and in Makefile.
+     That example saves a single function in a file, and then restores
+     it at a _new_ location in memory.  Pay special attention to the
+     coding of read() and write().  As described in the man pages, read()
+     and write() may read/write only part of the full data requested.
+     They then return an 'int' for how much of the data was actually read
+     or written.  This is the reason that the example code places read()
+     and write() in a 'while' loop.  Now write your own function
+     that can save an entire memory segment, assuming that the function
+     has arguments for the start and end address of the memory segment.
+6.  Your signal handler should then save _all_ memory segments in a
+     checkpoint image (either through a new function, or as part of the
+     function that read /proc/self/maps).  The information should be
+     saved in a checkpoint image file.  One possible structure for the
+     file would be:  HEADER1, DATA1, HEADER2, DATA2, ....  In this case
+     a HEADER might possibly look like:
+      struct ckpt_segment {
+        void *start_address;
+        void *end_address;
+        int read, write, execute;
+        int is_register_context; // Is this a context from sigsetjmp?
+                                 // If so, ignore the start_address,
+                                 //   end_address, and read/write/execute.
+        int data_size;  // Size of DATA after this HEADER.
+        char name[80];  // Optional (used only for debugging)
+      }
+    This struct is similar to the one found in 'struct proc_maps_line'
+    from proc-self-maps.c.  See BACKGROUND and Makefile for more information.
+7.  In the last step, we saved all memory segments.  In fact, [vdso] and
+     [vsyscall] are special.  They are injected by the Linux kernel and
+     specialized for the current process.  Don't save them in your
+     checkpoint image file.  On restart, we will use the new [vdso]
+     and [vsyscall] memory segments provided by the kernel for the new process.
+8.  And there is one more "ckpt_segment" that we will need to save.
+     On restart, after we restore all of the memory segments, we will
+     need to "jump" back into the original code at the old location
+     given by the previous program counter ($pc).  Luckily, Linux has
+     system calls for saving and restoring _all_ registers (including
+     $pc and $sp).  These are 'sigsetjmp()' and 'siglongjmp()'.  Make sure
+     that your checkpoint image file uses 'sigsetjmp()' to save a copy
+     of the checkpoint image file.  For an example of this, see
+     constructor5.c, used as part of test5, as mentioned in BACKGROUND
+     and in Makefile.  Note that the registers are saved in a data
+     structure of type 'sigjmp_buf'.  So, the 'data_size' field
+     of ckpt_segment will be set to 'sizeof(sigjmp_buf)'.
+8.  CONGRATULATIONS!  You've completed half the work.  You now have a
+     checkpoint image file.  For consistency, let's call this file 'myckpt'.
+     Let's assume that your checkpointing program (analogous to 'text5')
+     is called checkpoint.c
+
+==================================================================
+B. READING THE CHECKPOINT IMAGE FILE AND PRINTING THE INFORMATION:
+1.  Let's do a consistency check, before moving on to the RESTART phase.
+     One of the important lessons of computer systems is to always
+     take _small_ steps, and then to go back and verify that it works.
+     Write a program, readckpt.c, that will read your checkpoint
+     image file ('myckpt'), and will print out some information
+     about what it contains.  Let's call this new program 'readckpt.c'.
+     If the DATA in 'myckpt' has 'is_register_context' set to 1 (true),
+     then print the $pc
+2.  Let's compare for consistency.  Run your program:
+       ./checkpoint EXECUTABLE
+     where ./checkpoint is your version of "test5/constructor5.c"
+     in the examples provided, and it is preloading your libckpt.so..
+     Make sure that EXECUTABLE runs for a long time (maybe an infinite loop?).
+     Look up the pid of EXECUTABLE (let's call that PID).  Then force
+     a checkpoint:  kill -12 PID
+     and compare the output of reading the checkpoint file:  ./readckpt myckpt 
+     with the actual memory segment information:  cat /proc/PID/maps
+     If the information agrees, then you have a valid checkpoint image file.
+
+==================================================================
+C. RESTARTING FROM A CHECKPOINT IMAGE FILE:
+1.  Create a file, restart.c.  The critical issue in restarting is
+     that our restart process might use some of the same addresses as
+     the original process that we are attempting to restore.  So, we
+     need to take steps to avoid an address conflict.  We will give
+     special instructions to the linker about where to load restart:
+      gcc -static \
+        -Wl,-Ttext-segment=5000000 -Wl,-Tdata=5100000 -Wl,-Tbss=5200000 \
+        -o restart restart.c
+    [ Note:  The gcc syntax '-Wl,Ttext=...' means pass on the parameter
+             '-Ttext=...' to the linker that will be called by gcc.
+             See 'man ld' for the Linux linker. ]
+      Note:  In reading 'man ld', you'll see that numbers like 500000000000
+             will be interpreted as hexadecimal, _not_ decimal. ]
+     Hopefully, addresses like 0x5000000 were not used by your original
+     process.  Furthermore, the '-static' flag says to build this
+     using the older statically linked format.  In this format, the text
+     segment and data segment of libc.so (actually from libc.a for statically
+     linked libraries) will be merged into one single text segment, and
+     one single data segment.  Verify this through:
+       readelf -S ./restart
+     Also, verify that the running process will have this property:
+       gdb --args ./restart
+       (gdb) break main
+       (gdb) run
+       (gdb) info proc   # And note the PID of the process
+       (gdb) shell cat /proc/PID/maps # ... replacing PID, by its value
+     For comparison, do:
+       ldd ./checkpoint
+       readelf -S ./checkpoint
+     and you'll see lots of extra libraries.
+2.  We are now guaranteed that the text and data segments of ./restart will
+     not have any conflicts.  But we still have to worry about the stack
+     segment.  There are two ways to accomplish this.
+    (i) In this method, you will grow the stack with many call frames,
+        so that the latest call frame will be at an address with no
+        conflict.  So, you can write a recursive function:
+          void recursive(int levels) {
+            if (levels > 0) {
+              recursive(level - 1);
+            } else {
+              do_work();
+            }
+          }
+        You will then call 'recursive(1000)', and define do_work to
+        restore the memory from the checkpoint image.  In GDB, do:
+          (gdb) break do_work
+          (gdb) print $sp
+        and verify that the address for $sp does not conflict with
+        any of your addresses seen from:  ./readckpt myckpt
+    (ii) Alternatively, you can mmap a new memory region at an
+         address that doesn't conflict:
+           mmap(0x6000000, 0x1000000, PROT_READ | PROT_WRITE,
+                MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+         Then set the stack pointer to (0x6000000 + 0x1000000 - 16),
+         which is the highest address, since the stack will grow downward.
+         You will set the $sp register using inline assembly language
+         inside your C program.
+           void *stack_ptr = 0x6000000 + 0x1000000 - 16,
+           asm volatile ("mov %0,%%rsp;" : : "g" (stack_ptr) : "memory");
+           do_work();
+         This will start a completely new stack and a new call frame.
+    NOTE:Later, we will do 'siglongjmp()', which will replace '$sp'
+         once again, but this time pointing to the original '$sp'
+         at the time of checkpoint.
+3.  We are now ready to map in the memory segments from the checkpoint
+      image file.  (See save-restore-memory.c for an example.)  We will
+      map in each memory segment in 'myckpt'.  We will use the MAP_FIXED
+      flag from 'man mmap' to specify the exact address to restore the segment.
+      There should be no address conflict with the text and data segments
+      of 'restart'.  However, there could still be a conflict with the old
+      stack of the 'restart' process.  Luckily, 'man mmap' tells us that:
+        "If the memory region  specified  by addr and len overlaps pages
+         of any existing mapping(s), then the overlapped part  of  the
+         existing mapping(s)  will  be discarded." [See MAP_FIXED section]
+      Add code for this to do_work().
+4.  You are now ready to restore the original registers saved in 'myckpt'.
+      Read 'man sigsetjmp' and 'man siglongjmp' again.  Also, create a variable:
+        sigjmp_buf old_registers;
+      To read the sigjmp_buf from 'myckpt' into old_registers:
+        read(fd, &old_registers, sizeof(sigjmp_buf);
+      When you were reading each memory segment from 'myckpt', you
+      should have specially recognized the field 'is_register_context'
+      of 'struct ckpt_segment'.  When 'is_register_context' was 1 (true),
+      you should have executed the 'read()' statement above to read
+      the sigjmp_buf from 'myckpt'.  Add that code to restart.c now.
+5.  You have now restored all of the memory segments from your checkpoint
+     image, and you have a sigjmp_buf ready.  You are now ready to
+     "pull the trigger".  Add to your code in restart.c:
+       siglongjmp(old_registers);
+     (And read 'man siglongjmp' for any include files that you'll need.)
+6.  If anything goes wrong (like a segfault), you will want to debug
+     at the assembly level:
+       gdb --args myrestart myckpt
+       (gdb) break main
+       (gdb) run
+       (gdb) break LINE  # where LINE is the line at which you call siglongjmp
+       (gdb) x/20i $pc
+       (gdb) si  # and repeat.  'si' is "step an assembly instruction"
+       (gdb) # When it segfaults, print $pc and other registers.  Compare with
+       (gdb) #  the intended target $pc (printed by your 'readckpt' program).
+    To discover the intended target $pc, you can run
+      ./checkpoint EXECUTABLE
+    under GDB, and set a breakpoint at your signal handler function before
+    executing 'run'.  Then, when you checkpoint, just after calling
+      sigsetjmp(...)
+    do:  (gdb) print $pc
+         [ You can also use GDB to print the internal data of your sigjmp_buf.
+    Now you have a known target $pc in the 'myckpt' that you generate.
+    When you restart, during assembly-level debugging, see if siglongjmp()
+    is taking you to that address, and if that address corresponds to
+    the correct memory segment.
+
+==================================================================
+D. WHAT TO HAND IN:
+[ THIS SECTION WILL BE REVISED: ]
+
+You must provide a Makefile for this project.
+
+==================================================================
+[ THIS SECTION WILL BE REVISED: ]
+Your Makefile _must_ include a target 'check', which depends on
+  the files libckpt.a and hello.c.  When you run 'make check',
+  your program should do:
+     gcc [ADD YOUR FLAGS HERE] -o hello hello.c
+     (sleep 3 && kill -12 `pgrep -n hello` && \
+      sleep 2 && pkill -9 -n hello && make restart) &
+     ./hello
+  Next, you must create a 'restart' target in Makefile.  It should do:
+    ./myrestart myckpt
+
+Next, you are responsible for writing the test program, hello.c.
+Write code for hello.c that will go into an infinite loop that prints
+to standard output the single character '.', and then sleeps for one second.
+[ Note:  You will need to call 'fflush(stdout)' to force the output
+         Normally, for efficiency, Linux will send the characters to the
+         screen only after it has seen the `\n' character marking the end
+         of a line of output. ]
+
+==================
+SIMPLE TIPS FOR DEBUGGING
+[ THIS SECTION WILL BE REVISED: ]
+
+You will sometimes want to look at the "proc/XXX/maps" while you are
+debugging from inside GDB.  The XXX refers to the process id.
+So, the way to do this is:
+(gdb) info proc
+  [ SHOWS SOME INFORMATION INCLUDING THE pid OF THE PROCESS BEING DEBUGGED. ]
+(gdb) shell cat /proc/XXX/maps
+  [ EXECUTE THE ABOVE, WHERE YOU REPLACE "XXX" BY THE ACTUAL pid. ]
+
+When you are debugging "restart", you will often want to verify
+that the data that you read back from "myckpt" is the same as the
+data that you thought you wrote into "myckpt" during checkpointing.
+This is easy to do within GDB.
+[ CHANGED:  sigjmp_buf instead of ucontext_t. ]
+(a) WITHIN ./hello (used for checkpointing):
+  (gdb) print mycontext
+    [ ASSUMING THAT YOUR CODE USES:  ucontext_t mycontext; ]
+(b) WITHIN ./myrestart (used for restarting):
+  [ AFTER READING BACK mycontext FROM the myckpt FILE. ]
+  (gdb) print mycontext
+    [ ASSUMING THAT YOUR CODE USES:  ucontext_t mycontext; ]
+(c) THEN visually compare the "before" and "after" to make sure they
+    are the same.
+
+You can also verify that your /proc/XXX/maps is the same _before_
+(during checkpointing) and _after_ (during myrestart).
+In "myrestart" (under GDB), finish calling "mmap" and "read" to
+read in all the memory regions from your "myckpt" file.
+Then do (as above):
+(gdb) info proc
+(gdb) shell cat /proc/XXX/maps
+    Finally, compare what you see with what you see if you do the
+same thing inside your ./hello program during checkpoint.  Verify, visually,
+that the memory regions correspond to the same addresses.
+
+==================
+ADVANCED TIPS FOR DEBUGGING
+[ THIS SECTION WILL BE REVISED: ]
+
+It is especially difficult to debug 'myrestart' using GDB, since 'myrestart'
+resets the stack pointer, and descends into assembly language in order
+to call setcontext, and change registers.  Here are two advanced techniques
+in GDB-based debugging that will help you.  Most students will not need
+these tips, but for the more advanced students, this will allow you
+to dig deeper into what is happening at the lowest levels.
+
+1.  Debugging at assembly level with GDB:
+    There are three additional GDB commands to learn in order to
+    debug in GDB:
+  a. Equivalent of 'list' command for assembly level:
+     (gdb) x/10i $pc-20
+     [This means: examine the next 10 instructions, starting with the
+      value of the program counter ($pc) minus 20 bytes.  Try this on
+      any GDB session, and it will quickly become intuitive.]
+  b. Equivalent of 'step' and 'next commands for assembly level:
+     They are 'si' ("step instruction") and 'ni' ("next instruction").
+  c. (gdb) info registers
+     [The name says it all.  Display current values of all registers.]
+
+2.  Loading a new symbol table into GDB:
+        After 'myrestart' has mapped in the memory of the user application
+    (e.g., hello.c), we now want to see the symbols of 'hello.c' instead
+    of the symbols of 'myrestart'.  So, we need to do
+        Recall that a symbol table is a table in which each row specifies
+    a symbol (variable name, function name, etc.), followed by
+    the address where it is stored in RAM, and optionally followed
+    by the type of the symbol (or at least the size of the memory
+    buffer that the address points to, such as 4 bytes for an 'int').
+
+    Try:
+    (gdb) apropos symbol
+      add-symbol-file -- Load symbols from FILE
+      ...
+    The 'add-symbol-file' command requires a filename and an address:
+    (gdb) help add-symbol-file
+      ...
+      Usage: add-symbol-file FILE ADDR [-s <SECT> <SECT_ADDR> -s <SECT> <SECT_ADDR> ...]
+      ADDR is the starting address of the file's text.
+
+    Clearly, the FILE for us is 'hello' (the executable compiled from hello.c).
+    ADDR should be the beginning of the text segment.  You can guess
+    the address of the text segment:
+      (For example, run "gdb ./hello", followed by
+       (gdb) break main
+       (gdb) run
+       (gdb) info proc mappings
+       If it's like my computer, you'll see the text begin at 0x400000.  So:
+       (gdb) add-symbol-file ./hello 0x400000
+       [Remember, your goal is to know about the text segment of ./hello,
+        prior to checkpointing.]
+      )
+    Or else, you can use a general script.  For this, copy:
+      util/gdb-add-symbol-file
+    from DMTCP to your local directory, or you can get it from the
+    developer's site:
+  https://raw.githubusercontent.com/dmtcp/dmtcp/master/util/gdb-add-symbol-file
+    Then run:
+      (gdb) shell ./gdb-add-symbol-file
+    and follow the instructions that it prints out.

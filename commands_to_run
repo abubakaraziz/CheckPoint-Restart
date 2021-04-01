@@ -1,0 +1,6 @@
+gcc -g3 -O0 -fPIC -c cpkt.c
+gcc -g3 -O0 -shared -fPIC -o libcpkt.so cpkt.o
+gcc -g3 -O0 -o mytest mytest.c
+gcc -g3 -O0 -rdynamic -o primes-test primes-test.c
+./mytest ./primes-test 1
+
