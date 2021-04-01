@@ -9,7 +9,7 @@
 CC=gcc
 CFLAGS=-g3 -O0
 
-all: primes-test counting-test test1 test2 test3 test4 test5 \
+all: primes-test counting-test test1 test2 test3 test4 test5 mytest\
      proc-self-maps save-restore-memory
 #========================
 
@@ -31,7 +31,16 @@ libconstructor%.so: constructor%.o
 	${CC} ${CFLAGS} -shared -fPIC -o $@ $<
 constructor%.o: constructor%.c
 	${CC} ${CFLAGS} -fPIC -c $<
+#==========================
+#My test make file
+mytest:	mytest.c libcpkt.so 
+	${CC} ${CFLAGS} -o mytest mytest.c 
 
+libcpkt.so: cpkt.o
+	    ${CC} ${CFLAGS} -shared -fPIC -o libcpkt.so cpkt.o
+ 
+cpkt.o: cpkt.c
+	${CC} ${CFLAGS} -fPIC -c cpkt.c
 #========================
 proc-self-maps: proc-self-maps.c
 	${CC} ${CFLAGS} -DSTANDALONE -o $@ $<
@@ -46,7 +55,7 @@ clean:
 	rm -f a.out primes-test counting-test
 	rm -f libconstructor?.so constructor?.o test? test
 	rm -f proc-self-maps save-restore-memory save-restore.dat
-
+	rm -f cpkt.o mytest libcpkt.so
 dist: clean
 	dir=`basename $$PWD` && cd .. && tar czvf $$dir.tar.gz ./$$dir
 	dir=`basename $$PWD` && ls -l ../$$dir.tar.gz
