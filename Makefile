@@ -9,7 +9,7 @@
 CC=gcc
 CFLAGS=-g3 -O0
 
-all: primes-test counting-test test1 test2 test3 test4 test5 mytest\
+all: hello primes-test counting-test test1 test2 test3 test4 test5 \
      proc-self-maps save-restore-memory
 #========================
 
@@ -17,6 +17,8 @@ primes-test: primes-test.c
 	${CC} ${CFLAGS} -rdynamic -o $@ $<
 
 counting-test: counting-test.c 
+	${CC} ${CFLAGS} -rdynamic -o $@ $<
+hello: hello.c
 	${CC} ${CFLAGS} -rdynamic -o $@ $<
 
 # https://stackoverflow.com/questions/36692315/what-exactly-does-rdynamic-do-and-when-exactly-is-it-needed
@@ -33,8 +35,8 @@ constructor%.o: constructor%.c
 	${CC} ${CFLAGS} -fPIC -c $<
 #==========================
 #My test make file
-mytest:	mytest.c libcpkt.so 
-	${CC} ${CFLAGS} -o mytest mytest.c 
+checkpoint: checkpoint.c libcpkt.so 
+	${CC} ${CFLAGS} -o checkpoint checkpoint.c 
 
 libcpkt.so: cpkt.o
 	    ${CC} ${CFLAGS} -shared -fPIC -o libcpkt.so cpkt.o
@@ -55,7 +57,7 @@ clean:
 	rm -f a.out primes-test counting-test
 	rm -f libconstructor?.so constructor?.o test? test
 	rm -f proc-self-maps save-restore-memory save-restore.dat
-	rm -f cpkt.o mytest libcpkt.so
+	rm -f cpkt.o checkpoint libcpkt.so
 dist: clean
 	dir=`basename $$PWD` && cd .. && tar czvf $$dir.tar.gz ./$$dir
 	dir=`basename $$PWD` && ls -l ../$$dir.tar.gz
