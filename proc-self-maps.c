@@ -9,6 +9,8 @@ struct proc_maps_line {
   char rwxp[4];
   int read, write, execute; // Not used in this versoin of the code
   char name[NAME_LEN]; // for debutting only
+  int is_register_context; //for register context
+  int data_size;
 };
 
 // Returns 0 on success
@@ -34,6 +36,8 @@ int match_one_line(FILE *proc_maps_file,
   proc_maps_line -> start = (void *)start;
   proc_maps_line -> end = (void *)end;
   memcpy(proc_maps_line->rwxp, rwxp, 4);
+  proc_maps_line->is_register_context=0;
+  proc_maps_line->data_size=end-start;
   return 0;
 }
 
