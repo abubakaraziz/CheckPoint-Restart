@@ -17,14 +17,19 @@ int main(){
 int i;
 int rc=-2;
 int segmentsize=sizeof(struct proc_maps_line);
-for (i=0;i<27;i++){
+
+while ( rc !=0  && rc != EOF){
   rc=0; 
-  while (rc<segmentsize){
+  while ( rc<segmentsize ){
   rc+=read(fd,&segment,segmentsize);
+  printf("value of rc %d", rc);
   if (rc==-1){
    perror("read");
    exit(1);}
-  }
+  if ( rc == EOF || rc==0 ){
+    break; 
+  
+  } }
   if ( segment.is_register_context == 0) {
   printf("%s (%c%c%c) %d %d\n"
            "  Address-range: %p - %p\n",
