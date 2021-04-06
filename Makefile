@@ -9,7 +9,7 @@
 CC=gcc
 CFLAGS=-g3 -O0
 
-all: hello primes-test counting-test test1 test2 test3 test4 test5 \
+all: restart hello primes-test counting-test test1 test2 test3 test4 test5 \
      proc-self-maps save-restore-memory
 #========================
 
@@ -52,7 +52,11 @@ save-restore-memory: save-restore-memory.c
 	${CC} ${CFLAGS} -o $@ $<
 
 #========================
+restart : restart.c
+	gcc -static -Wl,-Ttext-segment=5000000 -Wl,-Tdata=5100000 -Wl,-Tbss=5200000 -o restart restart.c 
 
+
+#=======================
 clean:
 	rm -f a.out primes-test counting-test
 	rm -f libconstructor?.so constructor?.o test? test
