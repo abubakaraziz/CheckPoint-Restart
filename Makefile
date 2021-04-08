@@ -18,10 +18,13 @@ primes-test: primes-test.c
 
 counting-test: counting-test.c 
 	${CC} ${CFLAGS} -rdynamic -o $@ $<
-hello: hello.c
-	${CC} ${CFLAGS} -rdynamic -o $@ $<
-
-# https://stackoverflow.com/questions/36692315/what-exactly-does-rdynamic-do-and-when-exactly-is-it-needed
+check: hello.c hello 
+	${CC} ${CFLAGS} -rdynamic -o $@ $< && \
+	make checkpoint && \
+	./checkpoint ./hello && \
+	sleep 2 && kill -12 `pgrep -n hello` && \
+	pkill -9 -n hello 
+# https://stackoverflow.com/questions/36692315/what-exactly-does-rdynamic-do-and-when-exactly-is-it-needed #./checkpoint ./hello && \#
 test: test.c
 	${CC} ${CFLAGS} -o $@ $<
 
@@ -53,7 +56,7 @@ save-restore-memory: save-restore-memory.c
 
 #========================
 restart : restart.c
-	gcc -static -Wl,-Ttext-segment=5000000 -Wl,-Tdata=5100000 -Wl,-Tbss=5200000 -o restart restart.c 
+	gcc -g -static -Wl,-Ttext-segment=5000000 -Wl,-Tdata=5100000 -Wl,-Tbss=5200000 -o restart restart.c 
 
 
 #=======================
@@ -61,7 +64,7 @@ clean:
 	rm -f a.out primes-test counting-test
 	rm -f libconstructor?.so constructor?.o test? test
 	rm -f proc-self-maps save-restore-memory save-restore.dat
-	rm -f cpkt.o checkpoint libcpkt.so
+	rm -f cpkt.o checkpoint libcpkt.so hello.o hello
 dist: clean
 	dir=`basename $$PWD` && cd .. && tar czvf $$dir.tar.gz ./$$dir
 	dir=`basename $$PWD` && ls -l ../$$dir.tar.gz
