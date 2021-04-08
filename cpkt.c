@@ -1,6 +1,7 @@
 #define _GNU_SOURCE /* Required for 'constructor' attribute (GNU extension) */
 #define _POSIX_C_SOURCE /*Required for sigsetmp/siglongjm[ */
-#include <setjmp.h>
+
+#include<ucontext.h>
 #include <stdio.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -12,9 +13,9 @@
 #include <assert.h>
 
 int main(int,char *[]);
- sigjmp_buf env;
 
-
+ //sigjmp_buf env;
+ucontext_t context;
 
 #define NAME_LEN 80
 struct proc_maps_line {
@@ -124,6 +125,7 @@ return 0;
 }
 
 int read_current_process_memory(struct proc_maps_line proc_maps[]){ 
+  printf("inside read current process \n");
   assert(proc_self_maps(proc_maps)==0); 
   
 return 0;
@@ -131,32 +133,33 @@ return 0;
 
 
 void signal_handler(int signal){
+  
+   printf("Signal Received %d\n",signal); 
+   //ucontext_t context; // A context includes register values. i already defined this globally ask professor whether we can define this variable globally or not
+   static int is_restart; //static local variables are stored in data segment	
+   is_restart=0;
+   getcontext(&context);
+   if ( is_restart == 1) {
 
-   printf("Signal Received %d\n",signal);
-	
-  if (sigsetjmp(env,1)!=0){/* write new sigjmpbuf */
-    printf("\n\n *** RESTARTING ***\n"); 
-  }
-   if (signal==SIGUSR2){
-        printf("SIGUSR RECEVED \n"); 
-
-	struct proc_maps_line proc_maps[1000];
+        //printf("going to read current memory\n");
+	is_restart = 0;
+ 	return;
+    }
+   is_restart = 1; 
+   struct proc_maps_line proc_maps[1000];
 	//Reading Memory Addresses  
-	read_current_process_memory(proc_maps);
-	//print_current_process_memory(proc_maps);
-	assert( save_process(proc_maps)==0);
-
-
-   }
-
-	exit(1);	
-	//siglongjmp(env,1);
+  
+   read_current_process_memory(proc_maps);
+   //print_current_process_memory(proc_maps);
+   assert( save_process(proc_maps)==0); 
+   printf("exit process \n");
+   exit(1);	
 }
 int write_single_segment(int fd,struct proc_maps_line segment){
 //writing contents of the struct file
   int rc=0;
   int sizeofmemory=sizeof(segment);
-  printf(" Writing this segment to file \n");
+  //printf(" Writing this segment to file \n");
   print_memory_segment(segment);
 
 /*copying the contents of the struct file first */
@@ -190,11 +193,11 @@ int save_register_context(int fd){
   int sizeofmemory=sizeof(struct proc_maps_line);
   /*Creating Memory Segment for Register */
   struct proc_maps_line *register_maps_line=(struct proc_maps_line *)malloc(sizeof(struct proc_maps_line));
-  register_maps_line -> start = (void *)&env;
+  register_maps_line -> start = (void *)&context;
   register_maps_line -> end = NULL;
   //strncpy(register_maps_line -> name, "REGISTER_SEGMENT",strlen("REGISTER_SEGMENT")+1);
-  register_maps_line -> data_size = sizeof(sigjmp_buf);  
-  register_maps_line -> is_register_context=1;
+  register_maps_line -> data_size = sizeof(context);  
+  register_maps_line -> is_register_context = 1;
   //printf("Size of registers %d\n",register_maps_line -> data_size);
   //printf("Register Context Name %s", register_maps_line -> name);
 
@@ -212,23 +215,23 @@ int save_register_context(int fd){
 }
   assert(rc==sizeofmemory);
 
-  FILE *fp=fdopen(fd,"w");	
-  int len=ftell(fp);
-  //printf("Current file location after writing register struct %d\n",len);
   
  //printf("Address of environment %p \n",&env);
  //printf("Start address is %p \n",register_maps_line->start);
 
- rc=0; 
+  rc=0; 
   //printf(" Writing this Register segment to file \n");
   while (rc < register_maps_line -> data_size){
-  rc +=write(fd,(char *) register_maps_line -> start + rc, register_maps_line -> data_size - rc);
+  rc +=  write(fd,(char *) register_maps_line -> start + rc, register_maps_line -> data_size - rc);
   if (rc<0){
-  perror("write");
-  exit(1);
+    perror("write");
+    exit(1);
   }
 }
- //printf(" Reigster Segment Written to Memory \n");
+  printf(" Reigster Segment Written to Memory \n");
+  FILE *fp=fdopen(fd,"w");	
+  int len=ftell(fp);
+  printf("Current file location after writing register  %d\n",len);
   return 0;
 }
 
