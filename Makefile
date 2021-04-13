@@ -1,58 +1,30 @@
-# You may decide to replace 'gcc' by 'clang' if you have 'clang on your
-# local machine.  It has better error reporting.
-
-# Some reasonable tests to try this out might be:
-# make all
-# ./test1 primtes-test 12345678912345
-# ./test1 counting-test 12345678912345
-
 CC=gcc
-CFLAGS=-g3 -O0
+CFLAGS=-g3 -O0 -fno-stack-protector
 
-all: restart hello primes-test counting-test test1 test2 test3 test4 test5 \
-     proc-self-maps save-restore-memory
+all: restart hello checkpoint
 #========================
 
-primes-test: primes-test.c
-	${CC} ${CFLAGS} -rdynamic -o $@ $<
+check: checkpoint restart hello
+	rm -f cpkt.dat  # Remove any older 'myckpt' files
+	./checkpoint ./hello &  # Start the target program in backgroun
+	sleep 2
+	echo Checkpointing ...
+	kill -12 `pgrep -n hello`  # Send a SIGUSR2 to the pid of 'hello'
+	sleep 2
+	echo Restarting ...
+	pkill -9 hello  # Kill your 'hello' program
+	./restart cpkt	
 
-counting-test: counting-test.c 
-	${CC} ${CFLAGS} -rdynamic -o $@ $<
-check: hello.c hello 
-	${CC} ${CFLAGS} -rdynamic -o $@ $< && \
-	make checkpoint && \
-	./checkpoint ./hello && \
-	sleep 2 && kill -12 `pgrep -n hello` && \
-	pkill -9 -n hello 
-# https://stackoverflow.com/questions/36692315/what-exactly-does-rdynamic-do-and-when-exactly-is-it-needed #./checkpoint ./hello && \#
-test: test.c
-	${CC} ${CFLAGS} -o $@ $<
-
-test%: test libconstructor%.so
-	cp $< $@
-
-# -fPIC required for shared libraries (.so)
-libconstructor%.so: constructor%.o
-	${CC} ${CFLAGS} -shared -fPIC -o $@ $<
-constructor%.o: constructor%.c
-	${CC} ${CFLAGS} -fPIC -c $<
-#==========================
 #My test make file
 checkpoint: checkpoint.c libcpkt.so 
 	${CC} ${CFLAGS} -o checkpoint checkpoint.c 
 
 libcpkt.so: cpkt.o
 	    ${CC} ${CFLAGS} -shared -fPIC -o libcpkt.so cpkt.o
- 
+hello:	hello.c  
+	${CC} ${CFLAGS} -o $@ $< 
 cpkt.o: cpkt.c
 	${CC} ${CFLAGS} -fPIC -c cpkt.c
-#========================
-proc-self-maps: proc-self-maps.c
-	${CC} ${CFLAGS} -DSTANDALONE -o $@ $<
-
-#========================
-save-restore-memory: save-restore-memory.c
-	${CC} ${CFLAGS} -o $@ $<
 
 #========================
 restart : restart.c
@@ -61,12 +33,8 @@ restart : restart.c
 
 #=======================
 clean:
-	rm -f a.out primes-test counting-test
-	rm -f libconstructor?.so constructor?.o test? test
-	rm -f proc-self-maps save-restore-memory save-restore.dat
-	rm -f cpkt.o checkpoint libcpkt.so hello.o hello
+	rm -f cpkt.o checkpoint libcpkt.so hello.o hello restart ckpt.dat
 dist: clean
 	dir=`basename $$PWD` && cd .. && tar czvf $$dir.tar.gz ./$$dir
 	dir=`basename $$PWD` && ls -l ../$$dir.tar.gz
 
-.PRECIOUS: libconstructor%.so constructor%.o
