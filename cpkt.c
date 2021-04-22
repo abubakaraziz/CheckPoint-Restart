@@ -12,9 +12,6 @@
 #include <sys/stat.h>
 #include <assert.h>
 
-int main(int,char *[]);
-
- //sigjmp_buf env;
 ucontext_t context;
 
 #define NAME_LEN 80
@@ -27,7 +24,6 @@ struct proc_maps_line {
   int is_register_context; //for register context only
   int data_size;
 };
-
 
 
 // Returns 0 on success

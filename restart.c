@@ -7,7 +7,21 @@
 #include<unistd.h>
 #include<assert.h>
 #include<ucontext.h>
-#include "proc-self-maps.c"
+
+
+#define NAME_LEN 80
+struct proc_maps_line {
+  char *start;
+  char *end;
+  char rwxp[4];
+  int read, write, execute; // Not used in this versoin of the code
+  char name[NAME_LEN]; // for debutting only
+  int is_register_context; //for register context only
+  int data_size;
+};
+
+
+
 void read_file(){
 char *filename="ckpt.dat";
   int fd;
